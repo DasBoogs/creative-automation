@@ -1,0 +1,11 @@
+# Creative Automation Pipeline Dependencies
+pydantic>=2.0.0
+pyyaml>=6.0
+click>=8.0.0
+dropbox>=11.36.0
+python-dotenv>=1.0.0
+google-genai>=0.1.0
+
+# Development dependencies
+pytest>=7.0.0
+pytest-cov>=4.0.0
