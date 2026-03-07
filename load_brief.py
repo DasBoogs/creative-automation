@@ -246,6 +246,11 @@ def display_brief(brief: CampaignBrief):
     click.echo(f"  {brief.region}")
     click.echo()
     
+    if brief.language:
+        click.echo(click.style("Language:", fg="yellow"))
+        click.echo(f"  {brief.language}")
+        click.echo()
+    
     click.echo(click.style("Audience:", fg="yellow"))
     click.echo(f"  {brief.audience}")
     click.echo()

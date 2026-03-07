@@ -34,6 +34,7 @@ class CampaignBrief(BaseModel):
     audience: str
     message: str
     aspect_ratios: list[str] = ["1:1", "9:16", "16:9"]
+    language: str | None = None  # Language of the brief text (e.g., "English", "Spanish")
 
     @field_validator("products")
     @classmethod
@@ -64,3 +65,4 @@ class RunResult(BaseModel):
     outputs: dict[str, dict[str, str]]          # {product_slug: {ratio: url}}
     reference_outputs: dict[str, str] = {}      # {product_slug: reference_url}
     log: list[str] = []
+    localization: dict[str, Any] = {}           # Tracks localization details

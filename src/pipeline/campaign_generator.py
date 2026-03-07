@@ -11,6 +11,7 @@ import click
 from src.models import CampaignBrief, Product
 from src.pipeline.dropbox_client import DropboxClient
 from src.pipeline.imagen_client import DEFAULT_IMAGE_MODEL, ImagenClient
+from src.pipeline.localizer import localize_message, localize_description
 from src.pipeline.prompt_builder import build_prompt
 
 log = logging.getLogger(__name__)
@@ -117,6 +118,82 @@ class CampaignGenerator:
         self._imagen_client = ImagenClient(api_key=self.google_api_key, model=gemini_model)
         self._dropbox_client = DropboxClient(access_token=self.dropbox_token)
     
+    def localize_brief(self, brief: CampaignBrief) -> tuple[CampaignBrief, dict]:
+        """Localize campaign message and product descriptions for the target region.
+        
+        Creates a copy of the brief with translated text if needed. Only translates
+        when the brief's language differs from the region's native language.
+        
+        Args:
+            brief: Original campaign brief.
+            
+        Returns:
+            Tuple of (localized_brief, localization_info) where localization_info
+            contains details about what was translated.
+        """
+        localization_info = {
+            "target_language": None,
+            "message_translated": False,
+            "original_message": None,
+            "localized_message": None,
+            "products": {},
+        }
+        
+        # Localize campaign message
+        localized_message, target_language = localize_message(
+            message=brief.message,
+            region=brief.region,
+            api_key=self.google_api_key,
+            brief_language=brief.language,
+        )
+        
+        if target_language:
+            localization_info["target_language"] = target_language
+            localization_info["message_translated"] = True
+            localization_info["original_message"] = brief.message
+            localization_info["localized_message"] = localized_message
+            log.info("Campaign message localized to %s: %r → %r", target_language, brief.message, localized_message)
+            click.echo(click.style(f"  ✓ Campaign message localized to {target_language}", fg="green"))
+        else:
+            click.echo(click.style("  ℹ No message translation needed", fg="cyan"))
+            log.info("Campaign message does not require localization")
+        
+        # Localize product descriptions
+        localized_products = []
+        for product in brief.products:
+            localized_desc, desc_language = localize_description(
+                description=product.description,
+                region=brief.region,
+                api_key=self.google_api_key,
+                brief_language=brief.language,
+            )
+            
+            # Create a copy of the product with localized description
+            localized_product = product.model_copy(update={"description": localized_desc})
+            localized_products.append(localized_product)
+            
+            if desc_language:
+                localization_info["products"][product.slug] = {
+                    "translated": True,
+                    "original": product.description,
+                    "localized": localized_desc,
+                    "language": desc_language,
+                }
+                log.info("Product %s description localized to %s", product.name, desc_language)
+                click.echo(click.style(f"  ✓ {product.name} description localized", fg="green"))
+            else:
+                localization_info["products"][product.slug] = {
+                    "translated": False,
+                }
+        
+        # Create localized brief
+        localized_brief = brief.model_copy(update={
+            "message": localized_message,
+            "products": localized_products,
+        })
+        
+        return localized_brief, localization_info
+    
     def generate_campaign_assets(
         self,
         run_id: str,
@@ -125,6 +202,7 @@ class CampaignGenerator:
         """Generate and upload ad creatives for all products x ratios.
         
         Stages:
+            0. Localize campaign message and product descriptions if needed.
             1. For each product: verify reference asset exists.
             2. For each product x ratio: generate ad creative using the reference.
             3. Upload each creative to Dropbox.
@@ -135,12 +213,13 @@ class CampaignGenerator:
             brief: Validated CampaignBrief with products and reference assets.
             
         Returns:
-            Dictionary with status, outputs, and log.
+            Dictionary with status, outputs, localization info, and log.
             {
                 "status": "complete" | "error",
                 "run_id": str,
                 "outputs": {product_slug: {ratio: url, ...}, ...},
                 "timings": {product_slug: {ratio: seconds, ...}, ...},
+                "localization": {localization details},
                 "log": [messages...],
                 "error": str (if status == "error")
             }
@@ -150,11 +229,12 @@ class CampaignGenerator:
         timings: dict[str, dict[str, float]] = {}
         
         log.info(
-            "run=%s generating campaign=%s products=%s ratios=%s",
+            "run=%s generating campaign=%s products=%s ratios=%s region=%s",
             run_id,
             brief.campaign_name,
             [p.slug for p in brief.products],
             brief.aspect_ratios,
+            brief.region,
         )
         click.echo()
         click.echo(
@@ -165,15 +245,24 @@ class CampaignGenerator:
             )
         )
         click.echo(click.style(f"Run ID: {run_id}", fg="cyan"))
+        click.echo(click.style(f"Region: {brief.region}", fg="cyan"))
         click.echo()
         
-        # Progress tracking
-        n_products = len(brief.products)
-        n_ratios = len(brief.aspect_ratios)
-        total_tasks = n_products * n_ratios
-        completed = 0
-        
         try:
+            # Stage 0: Localize text content
+            click.echo(click.style("🌐 Localizing campaign content...", fg="magenta", bold=True))
+            localized_brief, localization_info = self.localize_brief(brief)
+            pipeline_log.append(f"Localization completed (target_language={localization_info.get('target_language', 'none')})")
+            click.echo()
+            
+            # Use localized brief for the rest of the pipeline
+            brief = localized_brief
+            
+            # Progress tracking
+            n_products = len(brief.products)
+            n_ratios = len(brief.aspect_ratios)
+            total_tasks = n_products * n_ratios
+            completed = 0
             # Stage 1: Verify reference assets
             missing_assets = []
             for product in brief.products:
@@ -258,7 +347,9 @@ class CampaignGenerator:
                 report = {
                     "run_id": run_id,
                     "campaign": brief.campaign_name,
+                    "region": brief.region,
                     "timestamp": datetime.now().isoformat(),
+                    "localization": localization_info,
                     "timings": timings,
                     "outputs": outputs,
                 }
@@ -277,6 +368,22 @@ class CampaignGenerator:
                 log.warning("run=%s %s", run_id, msg)
                 click.echo(click.style(f"⚠ {msg}", fg="yellow"))
             
+            # Display localization summary
+            if localization_info.get("target_language"):
+                click.echo()
+                click.echo(click.style("📝 Localization Summary:", fg="magenta", bold=True))
+                click.echo(click.style(f"  Target Language: {localization_info['target_language']}", fg="magenta"))
+                if localization_info.get("message_translated"):
+                    click.echo(click.style(f"  Original Message: {localization_info['original_message']}", fg="white"))
+                    click.echo(click.style(f"  Localized Message: {localization_info['localized_message']}", fg="green"))
+                
+                translated_products = [
+                    slug for slug, info in localization_info.get("products", {}).items()
+                    if info.get("translated")
+                ]
+                if translated_products:
+                    click.echo(click.style(f"  Translated Products: {', '.join(translated_products)}", fg="green"))
+            
             click.echo()
             click.echo(click.style("✓ Campaign generation complete!", fg="green", bold=True))
             click.echo()
@@ -286,6 +393,7 @@ class CampaignGenerator:
                 "run_id": run_id,
                 "outputs": outputs,
                 "timings": timings,
+                "localization": localization_info,
                 "log": pipeline_log,
             }
             
@@ -295,9 +403,13 @@ class CampaignGenerator:
             log.error("run=%s %s", run_id, error_msg)
             click.echo(click.style(f"✗ {error_msg}", fg="red"))
             
+            # Try to include localization info even on error
+            localization_info = locals().get("localization_info", {})
+            
             return {
                 "status": "error",
                 "run_id": run_id,
                 "error": str(exc),
+                "localization": localization_info,
                 "log": pipeline_log,
             }

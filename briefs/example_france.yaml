@@ -1,0 +1,22 @@
+campaign_name: French Summer Collection
+region: FR
+audience: Passionnés d'activités de plein air, 25-45 ans
+message: "Préparez-vous pour l'aventure estivale parfaite"
+language: French
+aspect_ratios:
+  - "1:1"
+  - "9:16"
+  - "16:9"
+products:
+  - name: Crème Solaire UltraShield SPF50
+    description: >
+      Crème solaire minérale légère et résistante à l'eau SPF 50.
+      Formule respectueuse des récifs, idéale pour les sports de plein air. Sans traces blanches.
+  - name: Serviette de Plage AquaGlide
+    description: >
+      Serviette de plage en microfibre ultra-absorbante avec technologie de séchage rapide.
+      Disponible dans des couleurs estivales vibrantes. Compacte et pratique pour les voyages.
+  - name: Bouteille d'Eau HydroFlow
+    description: >
+      Bouteille d'eau isotherme en acier inoxydable de 32 oz qui garde les boissons froides pendant 24 heures.
+      Couvercle étanche. Sans BPA. Parfaite pour la plage, la randonnée ou la salle de sport.
