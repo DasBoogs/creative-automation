@@ -11,8 +11,13 @@ import click
 from src.models import CampaignBrief, Product
 from src.pipeline.dropbox_client import DropboxClient
 from src.pipeline.imagen_client import DEFAULT_IMAGE_MODEL, ImagenClient
-from src.pipeline.localizer import localize_message, localize_description
+from src.pipeline.localizer import (
+    DEFAULT_TEXT_MODEL,
+    localize_message,
+    localize_description,
+)
 from src.pipeline.prompt_builder import build_prompt
+from src.utils import sanitize_campaign_slug
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +34,7 @@ def _campaign_folder(brief: CampaignBrief) -> str:
     Keeping the folder name date-free lets multiple runs for the same campaign
     share the same structure.
     """
-    slug = brief.campaign_name.lower().replace(" ", "-").replace(":", "x")
+    slug = sanitize_campaign_slug(brief.campaign_name)
     return f"/{_dropbox_app_name()}/outputs/cli/{slug}"
 
 
@@ -137,7 +142,7 @@ class CampaignGenerator:
             )
         
         self.gemini_model = gemini_model
-        self.text_model = text_model or os.getenv("GEMINI_TEXT_MODEL", "gemini-2.0-flash-exp")
+        self.text_model = text_model or os.getenv("GEMINI_TEXT_MODEL", DEFAULT_TEXT_MODEL)
         self._imagen_client = ImagenClient(api_key=self.google_api_key, model=gemini_model)
         self._dropbox_client = DropboxClient(
             access_token=self.dropbox_token or "",

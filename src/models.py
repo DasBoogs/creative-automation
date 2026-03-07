@@ -3,7 +3,61 @@ import re
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+PROHIBITED_LEGAL_SAFETY_PHRASES = [
+    "free money",
+    "guaranteed",
+    "100% safe",
+    "risk-free",
+    "no risk",
+    "zero risk",
+    "completely safe",
+    "totally safe",
+    "absolutely safe",
+    "safe for everyone",
+    "safe for all",
+    "always safe",
+    "no side effects",
+    "without side effects",
+    "side effect free",
+    "cure",
+    "cures",
+    "cured",
+    "prevent disease",
+    "treat disease",
+    "medical miracle",
+    "miracle cure",
+    "doctor approved",
+    "clinically proven",
+    "scientifically proven",
+    "proven results",
+    "instant results",
+    "immediate results",
+    "results guaranteed",
+    "guaranteed results",
+    "money-back guaranteed",
+    "double your money",
+    "earn instantly",
+    "get rich quick",
+    "fast cash",
+    "easy cash",
+    "effortless income",
+    "passive income guaranteed",
+    "no effort required",
+    "lose weight fast",
+    "burn fat instantly",
+    "anti-aging cure",
+    "reverses aging",
+    "eliminate wrinkles overnight",
+    "works for everyone",
+    "works every time",
+    "never fails",
+    "fail-proof",
+    "guaranteed approval",
+    "pre-approved",
+]
 
 
 class Product(BaseModel):
@@ -33,7 +87,7 @@ class CampaignBrief(BaseModel):
     region: str
     audience: str
     message: str
-    aspect_ratios: list[str] = ["1:1", "9:16", "16:9"]
+    aspect_ratios: list[str] = Field(default_factory=lambda: ["1:1", "9:16", "16:9"])
     language: str | None = None  # Language of the brief text (e.g., "English", "Spanish")
 
     @field_validator("products")
@@ -44,25 +98,29 @@ class CampaignBrief(BaseModel):
             raise ValueError("A campaign brief must include at least 2 products.")
         return v
 
+    @model_validator(mode="after")
+    def validate_prohibited_legal_safety_phrases(self) -> "CampaignBrief":
+        """Validate that legal/safety prohibited phrases are not present in brief text."""
+        violations: list[tuple[str, str]] = []
 
-class ProgressEvent(BaseModel):
-    """Progress event model for tracking pipeline execution."""
-    run_id: str
-    stage: str  # "localizing" | "localized" | "generating_reference" | "generating" | "generated" | "complete" | "error"
-    product: str | None = None
-    ratio: str | None = None
-    progress: int  # 0–100
-    message: str
-    url: str | None = None  # populated on "generated" stage with the Dropbox URL
-    brief: CampaignBrief | None = None  # populated on "localized" stage with the updated brief
+        message_lower = self.message.lower()
+        for phrase in PROHIBITED_LEGAL_SAFETY_PHRASES:
+            if phrase in message_lower:
+                violations.append(("message", phrase))
 
+        for index, product in enumerate(self.products):
+            description_lower = product.description.lower()
+            for phrase in PROHIBITED_LEGAL_SAFETY_PHRASES:
+                if phrase in description_lower:
+                    violations.append((f"products[{index}].description", phrase))
 
-class RunResult(BaseModel):
-    """Run result model for pipeline execution."""
-    run_id: str
-    status: str
-    brief: CampaignBrief
-    outputs: dict[str, dict[str, str]]          # {product_slug: {ratio: url}}
-    reference_outputs: dict[str, str] = {}      # {product_slug: reference_url}
-    log: list[str] = []
-    localization: dict[str, Any] = {}           # Tracks localization details
+        if violations:
+            details = "; ".join(
+                f"{field_path}: '{phrase}'" for field_path, phrase in violations
+            )
+            raise ValueError(
+                f"Legal safety validation failed. Prohibited phrase(s) found: {details}"
+            )
+
+        return self
+

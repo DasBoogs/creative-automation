@@ -148,6 +148,129 @@ class TestBriefLoader:
         with pytest.raises(ValueError, match="at least 2 products"):
             load_brief_from_file(brief_file)
 
+    def test_validation_error_prohibited_phrase_in_message(self, tmp_path):
+        """Test that prohibited legal/safety phrases in message fail validation."""
+        brief_data = {
+            "campaign_name": "Test Campaign",
+            "region": "US",
+            "audience": "Everyone",
+            "message": "This offer is guaranteed to change your life",
+            "products": [
+                {
+                    "name": "Product One",
+                    "slug": "product-one",
+                    "description": "Description one",
+                },
+                {
+                    "name": "Product Two",
+                    "slug": "product-two",
+                    "description": "Description two",
+                },
+            ],
+        }
+
+        brief_file = tmp_path / "test.yaml"
+        with open(brief_file, "w") as f:
+            yaml.dump(brief_data, f)
+
+        with pytest.raises(ValueError, match="Legal safety validation failed") as exc:
+            load_brief_from_file(brief_file)
+
+        assert "message: 'guaranteed'" in str(exc.value)
+
+    def test_validation_error_prohibited_phrase_in_product_description(self, tmp_path):
+        """Test that prohibited legal/safety phrases in product descriptions fail validation."""
+        brief_data = {
+            "campaign_name": "Test Campaign",
+            "region": "US",
+            "audience": "Everyone",
+            "message": "Test message",
+            "products": [
+                {
+                    "name": "Product One",
+                    "slug": "product-one",
+                    "description": "Get free money now with this bundle",
+                },
+                {
+                    "name": "Product Two",
+                    "slug": "product-two",
+                    "description": "Description two",
+                },
+            ],
+        }
+
+        brief_file = tmp_path / "test.yaml"
+        with open(brief_file, "w") as f:
+            yaml.dump(brief_data, f)
+
+        with pytest.raises(ValueError, match="Legal safety validation failed") as exc:
+            load_brief_from_file(brief_file)
+
+        assert "products[0].description: 'free money'" in str(exc.value)
+
+    def test_validation_error_prohibited_phrase_is_case_insensitive(self, tmp_path):
+        """Test prohibited phrase matching is case-insensitive."""
+        brief_data = {
+            "campaign_name": "Test Campaign",
+            "region": "US",
+            "audience": "Everyone",
+            "message": "This product is GUARANTEED to deliver",
+            "products": [
+                {
+                    "name": "Product One",
+                    "slug": "product-one",
+                    "description": "Description one",
+                },
+                {
+                    "name": "Product Two",
+                    "slug": "product-two",
+                    "description": "Description two",
+                },
+            ],
+        }
+
+        brief_file = tmp_path / "test.yaml"
+        with open(brief_file, "w") as f:
+            yaml.dump(brief_data, f)
+
+        with pytest.raises(ValueError, match="Legal safety validation failed") as exc:
+            load_brief_from_file(brief_file)
+
+        assert "message: 'guaranteed'" in str(exc.value)
+
+    def test_validation_error_aggregates_multiple_violations(self, tmp_path):
+        """Test that all legal/safety violations are reported in one failure."""
+        brief_data = {
+            "campaign_name": "Test Campaign",
+            "region": "US",
+            "audience": "Everyone",
+            "message": "This is guaranteed and works every time",
+            "products": [
+                {
+                    "name": "Product One",
+                    "slug": "product-one",
+                    "description": "100% safe formula for all users",
+                },
+                {
+                    "name": "Product Two",
+                    "slug": "product-two",
+                    "description": "Description two",
+                },
+            ],
+        }
+
+        brief_file = tmp_path / "test.yaml"
+        with open(brief_file, "w") as f:
+            yaml.dump(brief_data, f)
+
+        with pytest.raises(ValueError, match="Legal safety validation failed") as exc:
+            load_brief_from_file(brief_file)
+
+        error_text = str(exc.value)
+        assert "message: 'guaranteed'" in error_text
+        assert "message: 'works every time'" in error_text
+        assert "products[0].description: '100% safe'" in error_text
+
     def test_default_aspect_ratios(self, tmp_path):
         """Test that aspect_ratios defaults to ["1:1", "9:16", "16:9"]."""
         brief_data = {

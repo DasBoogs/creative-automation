@@ -12,6 +12,7 @@ from src.models import CampaignBrief, Product
 from src.pipeline.imagen_client import ImagenClient
 from src.pipeline.prompt_builder import build_reference_prompt
 from src.pipeline.summary_logger import write_summary_log
+from src.utils import serialize_brief_for_export
 
 log = logging.getLogger(__name__)
 
@@ -149,13 +150,7 @@ class AssetGenerator:
             run_dir: Directory to save the brief in.
         """
         try:
-            # Convert brief to dict for serialization
-            brief_dict = brief.model_dump(mode="python")
-            # Convert Path objects to strings
-            for product in brief_dict.get("products", []):
-                if "reference_asset" in product and product["reference_asset"]:
-                    product["reference_asset"] = str(product["reference_asset"])
-            
+            brief_dict = serialize_brief_for_export(brief)
             # Save as YAML
             yaml_path = run_dir / "brief.yaml"
             with open(yaml_path, "w", encoding="utf-8") as f:

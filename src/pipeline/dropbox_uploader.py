@@ -9,6 +9,7 @@ import yaml
 
 from src.models import CampaignBrief
 from src.pipeline.dropbox_client import DropboxClient
+from src.utils import sanitize_campaign_slug, serialize_brief_for_export
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +54,8 @@ class CampaignUploader:
         Raises:
             RuntimeError: If any critical uploads fail (brief files or product assets)
         """
-        campaign_path = f"{self.base_path}/{brief.campaign_name}"
+        campaign_slug = sanitize_campaign_slug(brief.campaign_name)
+        campaign_path = f"{self.base_path}/{campaign_slug}"
         
         click.echo(click.style(f"\n📤 Uploading campaign to Dropbox: {campaign_path}", fg="cyan", bold=True))
         
@@ -68,12 +70,7 @@ class CampaignUploader:
         # Upload brief as YAML
         try:
             brief_yaml_path = f"{campaign_path}/brief.yaml"
-            brief_dict = brief.model_dump(mode="python")
-            # Convert Path objects to strings for YAML serialization
-            for product in brief_dict.get("products", []):
-                if "reference_asset" in product and product["reference_asset"]:
-                    product["reference_asset"] = str(product["reference_asset"])
-            
+            brief_dict = serialize_brief_for_export(brief)
             yaml_data = yaml.dump(brief_dict, default_flow_style=False, sort_keys=False)
             self.client.upload(yaml_data.encode("utf-8"), brief_yaml_path)
             uploaded_files["brief_yaml"] = brief_yaml_path
@@ -87,12 +84,7 @@ class CampaignUploader:
         # Upload brief as JSON
         try:
             brief_json_path = f"{campaign_path}/brief.json"
-            brief_dict = brief.model_dump(mode="python")
-            # Convert Path objects to strings for JSON serialization
-            for product in brief_dict.get("products", []):
-                if "reference_asset" in product and product["reference_asset"]:
-                    product["reference_asset"] = str(product["reference_asset"])
-            
+            brief_dict = serialize_brief_for_export(brief)
             json_data = json.dumps(brief_dict, indent=2)
             self.client.upload(json_data.encode("utf-8"), brief_json_path)
             uploaded_files["brief_json"] = brief_json_path
