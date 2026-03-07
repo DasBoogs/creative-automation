@@ -2,6 +2,7 @@
 """CLI script for loading and displaying campaign briefs."""
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import click
@@ -10,6 +11,7 @@ from dotenv import load_dotenv
 from src.brief_loader import load_brief_from_file
 from src.models import CampaignBrief
 from src.pipeline.asset_generator import AssetGenerator
+from src.pipeline.campaign_generator import CampaignGenerator
 from src.pipeline.dropbox_uploader import CampaignUploader, get_dropbox_client_from_env
 
 # Load environment variables from .env file
@@ -98,22 +100,30 @@ def assign_reference_assets(brief: CampaignBrief, assets_folder: Path) -> None:
 )
 def main(brief_file: Path, output_json: bool, validate_only: bool, assets_folder: Path | None):
     """
-    Load and display a campaign brief from a YAML or JSON file.
-    The brief and assets will be automatically uploaded to Dropbox.
+    Load, upload, and generate campaign ad creatives for a brief.
     
     BRIEF_FILE: Path to the campaign brief file (.yaml, .yml, or .json)
     
     Dropbox credentials are automatically loaded from your .env file.
     
+    This script will:
+    1. Load and validate the brief
+    2. Assign reference assets from the assets folder (if provided)
+    3. Generate missing reference assets using Imagen (if any are missing)
+    4. Upload the brief to Dropbox
+    5. Generate ad creatives for each product × aspect ratio
+    6. Upload ad creatives to Dropbox with temporary links
+    7. Write a run report to Dropbox
+    
     Examples:
     
-        # Load and upload a brief with reference assets
+        # Load, upload, and generate campaign assets
         python load_brief.py briefs/example.yaml --assets-folder briefs/assets
         
-        # Validate a brief without uploading
+        # Validate a brief without uploading or generating
         python load_brief.py briefs/example.yaml --validate-only
         
-        # Output brief as JSON (also uploads)
+        # Output brief as JSON
         python load_brief.py briefs/example.yaml --json
     """
     try:
@@ -178,6 +188,40 @@ def main(brief_file: Path, output_json: bool, validate_only: bool, assets_folder
         else:
             # Display formatted output
             display_brief(brief)
+        
+        # Generate campaign assets
+        try:
+            # Verify all products have reference assets
+            products_without_assets = [p for p in brief.products if p.reference_asset is None]
+            if products_without_assets:
+                click.echo(
+                    click.style(
+                        f"✗ Cannot generate campaigns: {len(products_without_assets)} product(s) missing reference assets",
+                        fg="red",
+                    ),
+                    err=True,
+                )
+                sys.exit(1)
+            
+            # Generate campaign assets
+            run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+            campaign_gen = CampaignGenerator()
+            result = campaign_gen.generate_campaign_assets(run_id, brief)
+            
+            if result["status"] != "complete":
+                click.echo(
+                    click.style(f"✗ Campaign generation failed: {result.get('error', 'Unknown error')}", fg="red"),
+                    err=True,
+                )
+                sys.exit(1)
+                
+        except ValueError as e:
+            click.echo(click.style(f"\nError: {e}", fg="red"), err=True)
+            sys.exit(1)
+        except Exception as e:
+            click.echo(click.style(f"\nError generating campaign assets: {e}", fg="red"), err=True)
+            log.error("Campaign generation error: %s", e)
+            sys.exit(1)
             
     except FileNotFoundError as e:
         click.echo(click.style(f"Error: {e}", fg="red"), err=True)
