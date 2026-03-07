@@ -15,7 +15,7 @@ from src.pipeline.campaign_generator import CampaignGenerator
 from src.pipeline.dropbox_uploader import CampaignUploader, get_dropbox_client_from_env
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(override=True)
 
 log = logging.getLogger(__name__)
 
@@ -175,11 +175,16 @@ def main(brief_file: Path, output_json: bool, validate_only: bool, assets_folder
             uploader = CampaignUploader(client)
             uploaded_files = uploader.upload_campaign(brief, assets_folder)
         except ValueError as e:
-            click.echo(click.style(f"\nError: {e}", fg="red"), err=True)
-            click.echo(click.style("\nMake sure DROPBOX_ACCESS_TOKEN is set in your .env file.", fg="yellow"))
+            click.echo(click.style(f"\n✗ Configuration Error: {e}", fg="red", bold=True), err=True)
+            click.echo(click.style("Make sure DROPBOX_ACCESS_TOKEN is set in your .env file.", fg="yellow"))
+            sys.exit(1)
+        except RuntimeError as e:
+            click.echo(click.style(f"\n✗ Upload Failed: {e}", fg="red", bold=True), err=True)
+            click.echo(click.style("Campaign generation cannot continue without successful Dropbox uploads.", fg="yellow"))
             sys.exit(1)
         except Exception as e:
-            click.echo(click.style(f"\nError uploading to Dropbox: {e}", fg="red"), err=True)
+            click.echo(click.style(f"\n✗ Unexpected error during Dropbox upload: {e}", fg="red", bold=True), err=True)
+            log.exception("Dropbox upload error")
             sys.exit(1)
         
         if output_json:

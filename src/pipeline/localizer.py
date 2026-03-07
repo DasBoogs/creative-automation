@@ -5,7 +5,7 @@ from google import genai
 
 log = logging.getLogger(__name__)
 
-DEFAULT_TEXT_MODEL = "gemini-2.0-flash-exp"
+DEFAULT_TEXT_MODEL = "gemini-2.5-flash-lite"
 
 # Regions where English is the primary language — no translation needed.
 _ENGLISH_REGIONS = {"US", "UK", "AU", "CA", "NZ", "IE", "ZA", "SG"}

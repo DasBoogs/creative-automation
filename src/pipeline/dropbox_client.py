@@ -31,7 +31,7 @@ class DropboxClient:
     def _new_client(self) -> dropbox.Dropbox:
         if self._supports_refresh:
             return dropbox.Dropbox(
-                oauth2_access_token=self._access_token,
+                oauth2_access_token=self._access_token or None,
                 oauth2_refresh_token=self._refresh_token,
                 app_key=self._app_key,
                 app_secret=self._app_secret,
@@ -39,11 +39,15 @@ class DropboxClient:
         return dropbox.Dropbox(oauth2_access_token=self._access_token)
 
     @staticmethod
-    def _is_expired_access_token_error(exc: Exception) -> bool:
+    def _is_access_token_auth_error(exc: Exception) -> bool:
         if not isinstance(exc, AuthError):
             return False
         text = str(exc)
-        return "expired_access_token" in text
+        return any(marker in text for marker in (
+            "expired_access_token",
+            "invalid_access_token",
+            "token_revoked",
+        ))
 
     def _call_with_auth_retry(
         self,
@@ -55,13 +59,13 @@ class DropboxClient:
         try:
             return fn()
         except Exception as exc:
-            if self._is_expired_access_token_error(exc):
+            if self._is_access_token_auth_error(exc):
                 if self._supports_refresh:
-                    log.warning("Dropbox access token expired during %s; retrying with refresh token", operation)
+                    log.warning("Dropbox access token failed during %s; retrying with refresh token", operation)
                     self._dbx = self._new_client()
                     return fn()
                 msg = (
-                    "Dropbox access token is expired. Configure either a new "
+                    "Dropbox access token is invalid or expired. Configure either a new "
                     "DROPBOX_ACCESS_TOKEN or set DROPBOX_REFRESH_TOKEN + DROPBOX_APP_KEY "
                     "(and DROPBOX_APP_SECRET if required) to enable automatic refresh."
                 )
@@ -75,7 +79,7 @@ class DropboxClient:
 
         Args:
             data: Raw bytes to upload.
-            dropbox_path: Full Dropbox path (e.g. "/adobe-poc/outputs/run1/prod/1x1.png").
+            dropbox_path: Full Dropbox path (e.g. "/{dropbox_app_name}/outputs/run1/prod/1x1.png").
 
         Returns:
             The path_display of the uploaded file.

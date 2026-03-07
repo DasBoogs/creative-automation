@@ -83,6 +83,7 @@ def mock_env_vars():
         {
             "GOOGLE_API_KEY": "test-google-key",
             "DROPBOX_ACCESS_TOKEN": "test-dropbox-token",
+            "DROPBOX_APP_NAME": "adobe-poc",
         },
     ):
         yield
@@ -129,6 +130,13 @@ class TestCampaignFolderHelper:
 
         # Colons are replaced with 'x', spaces with hyphens, special chars like & preserved
         assert folder == "/adobe-poc/outputs/cli/summerx-essentials-&-gear"
+
+    def test_campaign_folder_uses_configured_dropbox_app_name(self, sample_brief):
+        """Test folder path generation uses DROPBOX_APP_NAME when configured."""
+        with patch.dict(os.environ, {"DROPBOX_APP_NAME": "custom-root"}):
+            folder = _campaign_folder(sample_brief)
+
+        assert folder == "/custom-root/outputs/cli/summer-essentials"
 
 
 class TestUploadImageHelper:
@@ -288,10 +296,29 @@ class TestCampaignGeneratorInit:
                 CampaignGenerator(dropbox_token="test-token")
 
     def test_init_missing_dropbox_token(self, mock_imagen_client):
-        """Test that missing Dropbox token raises ValueError."""
-        with patch.dict(os.environ, {"DROPBOX_ACCESS_TOKEN": ""}):
-            with pytest.raises(ValueError, match="DROPBOX_ACCESS_TOKEN"):
+        """Test that missing Dropbox credentials raise ValueError."""
+        with patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"}, clear=True):
+            with pytest.raises(ValueError, match="Dropbox credentials"):
                 CampaignGenerator(google_api_key="test-key")
+
+    def test_init_with_refresh_credentials_only(self, mock_imagen_client, mock_dropbox_client):
+        """Test initialization when only refresh-token credentials are provided."""
+        with patch.dict(os.environ, {"GOOGLE_API_KEY": "test-api-key"}, clear=True):
+            generator = CampaignGenerator(
+                google_api_key="test-api-key",
+                dropbox_refresh_token="test-refresh-token",
+                dropbox_app_key="test-app-key",
+            )
+
+        assert generator.google_api_key == "test-api-key"
+        assert generator.dropbox_refresh_token == "test-refresh-token"
+        assert generator.dropbox_app_key == "test-app-key"
+        mock_dropbox_client.assert_called_once_with(
+            access_token="",
+            refresh_token="test-refresh-token",
+            app_key="test-app-key",
+            app_secret=None,
+        )
 
     def test_init_creates_clients(self, mock_imagen_client, mock_dropbox_client, mock_env_vars):
         """Test that initialization creates Imagen and Dropbox clients."""

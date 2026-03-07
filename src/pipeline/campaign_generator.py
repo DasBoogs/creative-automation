@@ -17,6 +17,12 @@ from src.pipeline.prompt_builder import build_prompt
 log = logging.getLogger(__name__)
 
 
+def _dropbox_app_name() -> str:
+    """Return configured Dropbox app root folder name."""
+    app_name = (os.getenv("DROPBOX_APP_NAME") or "adobe-poc").strip("/")
+    return app_name or "adobe-poc"
+
+
 def _campaign_folder(brief: CampaignBrief) -> str:
     """Return the stable Dropbox folder prefix for this campaign (no date).
     
@@ -24,7 +30,7 @@ def _campaign_folder(brief: CampaignBrief) -> str:
     share the same structure.
     """
     slug = brief.campaign_name.lower().replace(" ", "-").replace(":", "x")
-    return f"/adobe-poc/outputs/cli/{slug}"
+    return f"/{_dropbox_app_name()}/outputs/cli/{slug}"
 
 
 def _upload_image(
@@ -75,8 +81,7 @@ def _write_report(
         brief: Campaign brief.
         report: Dictionary containing run results and timings.
     """
-    campaign_slug = brief.campaign_name.lower().replace(" ", "-").replace(":", "x")
-    report_path = f"/adobe-poc/outputs/cli/{campaign_slug}/{run_id}/report.json"
+    report_path = f"{_campaign_folder(brief)}/{run_id}/report.json"
     
     try:
         report_json = json.dumps(report, indent=2)
@@ -94,14 +99,22 @@ class CampaignGenerator:
         self,
         google_api_key: str | None = None,
         dropbox_token: str | None = None,
+        dropbox_refresh_token: str | None = None,
+        dropbox_app_key: str | None = None,
+        dropbox_app_secret: str | None = None,
         gemini_model: str = DEFAULT_IMAGE_MODEL,
+        text_model: str | None = None,
     ):
         """Initialize the campaign generator.
         
         Args:
             google_api_key: Google API key. If not provided, reads from GOOGLE_API_KEY env var.
             dropbox_token: Dropbox access token. If not provided, reads from DROPBOX_ACCESS_TOKEN env var.
+            dropbox_refresh_token: Dropbox refresh token. If not provided, reads from DROPBOX_REFRESH_TOKEN env var.
+            dropbox_app_key: Dropbox app key. If not provided, reads from DROPBOX_APP_KEY env var.
+            dropbox_app_secret: Dropbox app secret. If not provided, reads from DROPBOX_APP_SECRET env var.
             gemini_model: Gemini model ID to use for image generation.
+            text_model: Gemini text model ID to use for localization. If not provided, reads from GEMINI_TEXT_MODEL env var.
             
         Raises:
             ValueError: If required credentials are not provided and not set in environment.
@@ -111,12 +124,27 @@ class CampaignGenerator:
             raise ValueError("GOOGLE_API_KEY not provided and not set in environment")
         
         self.dropbox_token = dropbox_token or os.getenv("DROPBOX_ACCESS_TOKEN")
-        if not self.dropbox_token:
-            raise ValueError("DROPBOX_ACCESS_TOKEN not provided and not set in environment")
+        self.dropbox_refresh_token = dropbox_refresh_token or os.getenv("DROPBOX_REFRESH_TOKEN")
+        self.dropbox_app_key = dropbox_app_key or os.getenv("DROPBOX_APP_KEY")
+        self.dropbox_app_secret = dropbox_app_secret or os.getenv("DROPBOX_APP_SECRET")
+
+        has_access_token = bool(self.dropbox_token)
+        has_refresh_credentials = bool(self.dropbox_refresh_token and self.dropbox_app_key)
+        if not has_access_token and not has_refresh_credentials:
+            raise ValueError(
+                "Dropbox credentials not provided. Set DROPBOX_ACCESS_TOKEN or "
+                "DROPBOX_REFRESH_TOKEN + DROPBOX_APP_KEY."
+            )
         
         self.gemini_model = gemini_model
+        self.text_model = text_model or os.getenv("GEMINI_TEXT_MODEL", "gemini-2.0-flash-exp")
         self._imagen_client = ImagenClient(api_key=self.google_api_key, model=gemini_model)
-        self._dropbox_client = DropboxClient(access_token=self.dropbox_token)
+        self._dropbox_client = DropboxClient(
+            access_token=self.dropbox_token or "",
+            refresh_token=self.dropbox_refresh_token,
+            app_key=self.dropbox_app_key,
+            app_secret=self.dropbox_app_secret,
+        )
     
     def localize_brief(self, brief: CampaignBrief) -> tuple[CampaignBrief, dict]:
         """Localize campaign message and product descriptions for the target region.
@@ -145,6 +173,7 @@ class CampaignGenerator:
             region=brief.region,
             api_key=self.google_api_key,
             brief_language=brief.language,
+            model=self.text_model,
         )
         
         if target_language:
@@ -166,6 +195,7 @@ class CampaignGenerator:
                 region=brief.region,
                 api_key=self.google_api_key,
                 brief_language=brief.language,
+                model=self.text_model,
             )
             
             # Create a copy of the product with localized description

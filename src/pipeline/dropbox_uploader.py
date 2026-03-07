@@ -16,14 +16,18 @@ log = logging.getLogger(__name__)
 class CampaignUploader:
     """Handles uploading campaign briefs and assets to Dropbox."""
 
-    def __init__(self, dropbox_client: DropboxClient):
+    def __init__(self, dropbox_client: DropboxClient, app_name: str | None = None):
         """Initialize uploader with a Dropbox client.
         
         Args:
             dropbox_client: Configured DropboxClient instance
+            app_name: Dropbox app folder name. Defaults to DROPBOX_APP_NAME or "adobe-poc".
         """
         self.client = dropbox_client
-        self.base_path = "/adobe-poc/inputs/cli"
+        resolved_app_name = (app_name or os.environ.get("DROPBOX_APP_NAME") or "adobe-poc").strip("/")
+        if not resolved_app_name:
+            resolved_app_name = "adobe-poc"
+        self.base_path = f"/{resolved_app_name}/inputs/cli"
 
     def upload_campaign(
         self,
@@ -45,6 +49,9 @@ class CampaignUploader:
                     "product-slug": "/path/to/asset.png"
                 }
             }
+            
+        Raises:
+            RuntimeError: If any critical uploads fail (brief files or product assets)
         """
         campaign_path = f"{self.base_path}/{brief.campaign_name}"
         
@@ -55,6 +62,8 @@ class CampaignUploader:
             "brief_json": None,
             "products": {}
         }
+        
+        errors = []
         
         # Upload brief as YAML
         try:
@@ -70,8 +79,10 @@ class CampaignUploader:
             uploaded_files["brief_yaml"] = brief_yaml_path
             click.echo(click.style(f"  ✓ Uploaded brief.yaml", fg="green"))
         except Exception as e:
-            click.echo(click.style(f"  ✗ Failed to upload brief.yaml: {e}", fg="red"))
-            log.error("Failed to upload brief YAML: %s", e)
+            error_msg = f"Failed to upload brief.yaml: {e}"
+            click.echo(click.style(f"  ✗ {error_msg}", fg="red"))
+            log.error(error_msg)
+            errors.append(error_msg)
         
         # Upload brief as JSON
         try:
@@ -87,12 +98,21 @@ class CampaignUploader:
             uploaded_files["brief_json"] = brief_json_path
             click.echo(click.style(f"  ✓ Uploaded brief.json", fg="green"))
         except Exception as e:
-            click.echo(click.style(f"  ✗ Failed to upload brief.json: {e}", fg="red"))
-            log.error("Failed to upload brief JSON: %s", e)
+            error_msg = f"Failed to upload brief.json: {e}"
+            click.echo(click.style(f"  ✗ {error_msg}", fg="red"))
+            log.error(error_msg)
+            errors.append(error_msg)
+        
+        # Check if critical brief files failed - fail immediately if so
+        if not uploaded_files["brief_yaml"] or not uploaded_files["brief_json"]:
+            click.echo(click.style("\n✗ Critical upload failure: Brief files must be uploaded to continue.", fg="red", bold=True))
+            raise RuntimeError(f"Failed to upload campaign brief files: {'; '.join(errors)}")
         
         # Upload product reference assets
         if assets_folder:
             click.echo(click.style("\n📦 Uploading product assets...", fg="cyan"))
+            product_errors = []
+            
             for product in brief.products:
                 if not product.slug:
                     continue
@@ -113,10 +133,15 @@ class CampaignUploader:
                             f"{asset_filename} → {asset_path}"
                         )
                     except Exception as e:
-                        click.echo(
-                            click.style(f"  ✗ Failed to upload {product.name}: {e}", fg="red")
-                        )
+                        error_msg = f"Failed to upload {product.name}: {e}"
+                        click.echo(click.style(f"  ✗ {error_msg}", fg="red"))
                         log.error("Failed to upload asset for %s: %s", product.name, e)
+                        product_errors.append(error_msg)
+            
+            # Check if any product assets failed - fail if so
+            if product_errors:
+                click.echo(click.style(f"\n✗ Product asset upload failure: {len(product_errors)} asset(s) failed to upload.", fg="red", bold=True))
+                raise RuntimeError(f"Failed to upload product assets: {'; '.join(product_errors)}")
         
         # Summary
         product_count = len(uploaded_files["products"])
@@ -127,6 +152,7 @@ class CampaignUploader:
         click.echo(f"  Brief files: {sum([1 for v in [uploaded_files['brief_yaml'], uploaded_files['brief_json']] if v])}/2")
         click.echo(f"  Product assets: {product_count}/{total_products}")
         click.echo(f"  Base path: {campaign_path}")
+        click.echo(click.style("  ✓ All uploads completed successfully", fg="green", bold=True))
         
         return uploaded_files
 
