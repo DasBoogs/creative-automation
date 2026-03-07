@@ -11,6 +11,7 @@ import yaml
 from src.models import CampaignBrief, Product
 from src.pipeline.imagen_client import ImagenClient
 from src.pipeline.prompt_builder import build_reference_prompt
+from src.pipeline.summary_logger import write_summary_log
 
 log = logging.getLogger(__name__)
 
@@ -110,6 +111,21 @@ class AssetGenerator:
         
         # Save the brief that was used for generation
         self._save_brief_to_run_dir(brief, run_dir)
+        
+        # Write summary log
+        generated_filenames = [f"{p.slug}.png" for p in products_to_generate if p.reference_asset]
+        try:
+            summary_path = write_summary_log(
+                run_dir=run_dir,
+                run_id=timestamp,
+                brief=brief,
+                log_type="asset_generation",
+                generated_assets=generated_filenames,
+            )
+            click.echo(click.style(f"📋 Summary log: {summary_path.name}", fg="green"))
+        except Exception as exc:
+            log.warning("Failed to write summary log: %s", exc)
+            click.echo(click.style(f"  ⚠ Could not write summary log: {exc}", fg="yellow"))
         
         click.echo(
             click.style(

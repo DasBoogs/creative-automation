@@ -13,6 +13,7 @@ from src.models import CampaignBrief
 from src.pipeline.asset_generator import AssetGenerator
 from src.pipeline.campaign_generator import CampaignGenerator
 from src.pipeline.dropbox_uploader import CampaignUploader, get_dropbox_client_from_env
+from src.pipeline.summary_logger import write_summary_log
 
 # Load environment variables from .env file
 load_dotenv(override=True)
@@ -212,6 +213,24 @@ def main(brief_file: Path, output_json: bool, validate_only: bool, assets_folder
             run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
             campaign_gen = CampaignGenerator()
             result = campaign_gen.generate_campaign_assets(run_id, brief)
+            
+            # Write summary log to local genoutput folder
+            try:
+                workspace_root = Path.cwd()
+                run_dir = workspace_root / "genoutput" / "runs" / run_id
+                run_dir.mkdir(parents=True, exist_ok=True)
+                
+                summary_path = write_summary_log(
+                    run_dir=run_dir,
+                    run_id=run_id,
+                    brief=brief,
+                    log_type="campaign_generation",
+                    result=result,
+                )
+                click.echo(click.style(f"\n📋 Summary log saved: {summary_path}", fg="green"))
+            except Exception as exc:
+                log.warning("Failed to write summary log: %s", exc)
+                click.echo(click.style(f"⚠ Could not write summary log: {exc}", fg="yellow"))
             
             if result["status"] != "complete":
                 click.echo(
