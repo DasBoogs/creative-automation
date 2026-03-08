@@ -144,7 +144,7 @@ The check blocks prohibited marketing language (50 case-insensitive phrases), in
 - `guaranteed`
 - `100% safe`
 
-If any prohibited phrase is found, loading fails gracefully with a detailed validation error listing each failed field and matched phrase.
+If any prohibited phrase is found, loading fails with a user-friendly legal-safety message, remediation guidance, and detailed field-level matches.
 
 ### Optional Fields
 

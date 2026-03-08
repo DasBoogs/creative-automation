@@ -3,8 +3,32 @@ import json
 from pathlib import Path
 
 import yaml
+from pydantic import ValidationError
 
 from src.models import CampaignBrief
+
+
+LEGAL_SAFETY_PREFIX = "Legal safety validation failed."
+
+
+def _format_legal_safety_error(exc: ValidationError) -> str | None:
+    """Return a user-friendly legal-safety error message when applicable."""
+    matched_messages: list[str] = []
+
+    for error in exc.errors(include_url=False):
+        error_message = str(error.get("msg", ""))
+        if LEGAL_SAFETY_PREFIX in error_message:
+            matched_messages.append(error_message)
+
+    if not matched_messages:
+        return None
+
+    details = "\n".join(f"- {message}" for message in matched_messages)
+    return (
+        "Brief blocked by legal safety validation.\n"
+        "Remove prohibited legal/safety claims from the campaign message or product descriptions and try again.\n"
+        f"Details:\n{details}"
+    )
 
 
 def load_brief_from_file(file_path: Path | str) -> CampaignBrief:
@@ -44,6 +68,11 @@ def load_brief_from_file(file_path: Path | str) -> CampaignBrief:
     # Parse and validate using Pydantic model
     try:
         brief = CampaignBrief(**data)
+    except ValidationError as e:
+        legal_safety_error = _format_legal_safety_error(e)
+        if legal_safety_error:
+            raise ValueError(legal_safety_error) from e
+        raise ValueError(f"Failed to parse brief: {e}") from e
     except Exception as e:
         raise ValueError(f"Failed to parse brief: {e}") from e
     

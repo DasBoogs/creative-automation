@@ -1,0 +1,21 @@
+campaign_name: Summer Essentials
+region: US
+audience: Active outdoor enthusiasts aged 25-45
+message: "Gear up for the perfect summer adventure, guaranteed!"
+aspect_ratios:
+  - "1:1"
+  - "9:16"
+  - "16:9"
+products:
+  - name: UltraShield Sunscreen SPF50
+    description: >
+      Lightweight, water-resistant mineral sunscreen with SPF 50.
+      Reef-safe formula ideal for outdoor sports. Leaves no white cast.
+  - name: AquaGlide Beach Towel
+    description: >
+      Ultra-absorbent microfiber beach towel with quick-dry technology.
+      Available in vibrant summer colors. Compact and travel-friendly.
+  - name: HydroFlow Water Bottle
+    description: >
+      Insulated 32oz stainless steel water bottle that keeps drinks cold for 24 hours.
+      Leak-proof lid. BPA-free. Perfect for beach, hike, or gym.

@@ -271,6 +271,39 @@ class TestBriefLoader:
         assert "message: 'works every time'" in error_text
         assert "products[0].description: '100% safe'" in error_text
 
+    def test_validation_error_shows_user_friendly_legal_safety_message(self, tmp_path):
+        """Test legal/safety failures surface a user-friendly remediation message."""
+        brief_data = {
+            "campaign_name": "Test Campaign",
+            "region": "US",
+            "audience": "Everyone",
+            "message": "These results are guaranteed",
+            "products": [
+                {
+                    "name": "Product One",
+                    "slug": "product-one",
+                    "description": "Description one",
+                },
+                {
+                    "name": "Product Two",
+                    "slug": "product-two",
+                    "description": "Description two",
+                },
+            ],
+        }
+
+        brief_file = tmp_path / "test.yaml"
+        with open(brief_file, "w") as f:
+            yaml.dump(brief_data, f)
+
+        with pytest.raises(ValueError) as exc:
+            load_brief_from_file(brief_file)
+
+        error_text = str(exc.value)
+        assert "Brief blocked by legal safety validation" in error_text
+        assert "Remove prohibited legal/safety claims" in error_text
+        assert "Legal safety validation failed" in error_text
+
     def test_default_aspect_ratios(self, tmp_path):
         """Test that aspect_ratios defaults to ["1:1", "9:16", "16:9"]."""
         brief_data = {
