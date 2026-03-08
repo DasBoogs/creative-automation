@@ -22,7 +22,7 @@ A flexible Python-based tool for loading, validating, localizing, and generating
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/DasBoogs/creative-automation
 cd creative-automation
 ```
 
