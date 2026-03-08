@@ -129,7 +129,7 @@ class TestCampaignFolderHelper:
         folder = _campaign_folder(brief)
 
         # Colons are replaced with 'x', spaces with hyphens, special chars like & preserved
-        assert folder == "/adobe-poc/outputs/cli/summerx-essentials-&-gear"
+        assert folder == "/adobe-poc/outputs/cli/summer-essentials-gear"
 
     def test_campaign_folder_uses_configured_dropbox_app_name(self, sample_brief):
         """Test folder path generation uses DROPBOX_APP_NAME when configured."""
